@@ -92,7 +92,32 @@ async function brush(){const c=await ensureAudio();if(!c)return;const o=c.create
 function review(){const pool=state.words.filter(due);if(!pool.length){openModal('<h2>今天没有到期词啦 🎉</h2><p class="note">可以直接做随机 10 题巩固。</p><button class="primary hover" id="goQuiz">去测试</button>');document.getElementById('goQuiz').onclick=quiz;return}let i=0;const next=()=>{if(i>=pool.length){state.history[isoToday()]=true;save();openModal(`<h2>今日复习完成 ✨</h2><p class="note">${pool.length} 个词已安排下一轮。</p><button class="primary hover" id="done">完成</button>`);document.getElementById('done').onclick=closeModal;return}const w=pool[i];openModal(`<div class="reviewCard" id="reviewWrap"><div class="eyebrow">MEMORY REVIEW · ${i+1}/${pool.length}</div><div class="reviewMascot"><svg viewBox="0 0 64 64"><circle cx="32" cy="32" r="23" fill="#9b8cff"/><circle cx="25" cy="30" r="3.6" fill="#fff"/><circle cx="39" cy="30" r="3.6" fill="#fff"/><circle cx="25" cy="30" r="1.4"/><circle cx="39" cy="30" r="1.4"/><path d="M27 40c3 3 7 3 10 0" fill="none" stroke="#27203f" stroke-width="2.4" stroke-linecap="round"/></svg></div><div class="quizQ">${esc(w.word)}</div><div class="pron">${esc(w.pron||'')}</div><button class="ghost hover" id="playWord" style="margin-top:9px">🔊 单词</button><div style="margin:16px 0"><button class="meaningHidden" id="meaning" style="background:transparent;border:0;font-size:18px;font-weight:800">${esc(w.meaning)}</button><div class="note">点击显示中文意思</div></div><div class="example"><b>${esc(w.example||'')}</b><div class="translation">${esc(w.translation||'')}</div><button class="ghost hover" id="playEx" style="margin-top:10px">🔊 例句</button></div><div class="quizFoot"><span>艾宾浩斯 · ${intervals[Math.min(w.round||0,intervals.length-1)]||1} 天</span><button class="primary hover" id="remember">刷掉这个词 ✓</button></div></div>`);speak(w.word);setTimeout(()=>w.example&&speak(w.example),750);document.getElementById('playWord').onclick=()=>speak(w.word);document.getElementById('playEx').onclick=()=>speak(w.example||'');document.getElementById('meaning').onclick=e=>{e.currentTarget.classList.remove('meaningHidden')};document.getElementById('remember').onclick=async()=>{document.getElementById('reviewWrap').classList.add('brushFlash');await brush();w.last=isoToday();w.round=Math.min((w.round||0)+1,intervals.length);w.due=addDays(isoToday(),intervals[Math.min(w.round-1,intervals.length-1)]);state.history[isoToday()]=true;save();i++;setTimeout(next,180)}};next()}
 function quiz(){const pool=[...state.words].sort(()=>Math.random()-.5).slice(0,Math.min(10,state.words.length));if(!pool.length)return;let idx=0,score=0;const ask=()=>{if(idx>=pool.length){openModal(`<h2>测试完成 🎯</h2><div class="quizQ">${score} / ${pool.length}</div><p class="note">正确率 ${Math.round(score/pool.length*100)}%。</p><button class="primary hover" onclick="closeModal()">完成</button>`);return}const w=pool[idx],opts=[w.meaning,...state.words.filter(x=>x.id!==w.id).sort(()=>Math.random()-.5).slice(0,3).map(x=>x.meaning)].sort(()=>Math.random()-.5);openModal(`<div class="eyebrow">RANDOM QUIZ</div><div class="quizFoot"><span>第 ${idx+1} / ${pool.length} 题</span><span>得分 ${score}</span></div><div class="quizQ">${esc(w.word)}</div><button class="ghost hover" id="qSpeak">🔊 发音</button><div class="options">${opts.map(o=>`<button class="opt hover">${esc(o)}</button>`).join('')}</div>`);document.getElementById('qSpeak').onclick=()=>speak(w.word);document.querySelectorAll('.opt').forEach(b=>b.onclick=()=>{const ok=b.textContent===w.meaning;b.classList.add(ok?'correct':'wrong');if(ok)score++;document.querySelectorAll('.opt').forEach(x=>x.disabled=true);setTimeout(()=>{idx++;ask()},430)})};ask()}
 function add(){openModal(`<h2>添加单词 / 词组</h2><div class="formRow"><input class="field" id="fWord" placeholder="单词或词组"><input class="field" id="fPron" placeholder="音标（可选）"></div><input class="field" id="fMeaning" placeholder="中文意思"><input class="field" id="fExample" placeholder="例句（可选）"><input class="field" id="fTranslation" placeholder="例句翻译（可选）"><button class="primary hover" id="saveWord">加入词库</button>`);document.getElementById('saveWord').onclick=()=>{const word=document.getElementById('fWord').value.trim(),meaning=document.getElementById('fMeaning').value.trim();if(!word||!meaning)return toast('请输入单词和中文意思');upsertWord({word,pron:document.getElementById('fPron').value.trim(),meaning,example:document.getElementById('fExample').value.trim(),translation:document.getElementById('fTranslation').value.trim()});closeModal();toast('已加入词库')}}
-function upsertWord(w){const old=state.words.find(x=>x.word.toLowerCase()===w.word.toLowerCase());if(old){Object.assign(old,w)}else{state.words.unshift({...w,id:'w-'+Date.now(),round:0,due:isoToday(),created:isoToday(),last:null})}save()}
+function upsertWord(w) {
+  const old = state.words.find(
+    x => x.word.toLowerCase() === w.word.toLowerCase()
+  );
+
+  if (old) {
+    Object.assign(old, w);
+  } else {
+    w = {
+      ...w,
+      id: "w-" + Date.now(),
+      round: 0,
+      due: isoToday(),
+      created: isoToday(),
+      last: null
+    };
+
+    state.words.unshift(w);
+  }
+
+  save();
+
+  if (currentUser) {
+    cloudSaveWord(w);
+  }
+}
 function exportData(){const blob=new Blob([JSON.stringify(state,null,2)],{type:'application/json'}),a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='牟之记忆法-词库.json';a.click();URL.revokeObjectURL(a.href)}
 function importData(){document.getElementById('fileInput').click()}
 document.getElementById('fileInput').onchange=e=>{const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=()=>{try{const n=JSON.parse(r.result);if(!n.words)throw 0;state=n;save();toast('词库导入成功')}catch(_){toast('词库文件格式不正确')}};r.readAsText(f)}
@@ -101,7 +126,195 @@ function readShare(){if(!location.hash.startsWith('#share='))return;try{const ra
 function renderChat(){const el=document.getElementById('chat');if(!state.chat?.length){el.innerHTML='<div class="empty">试试问：<b>“pounce 是什么意思？给我一个生活场景例句”</b></div>';return}el.innerHTML=state.chat.map(m=>{if(m.role==='user')return `<div class="msg user"><div class="bubble">${esc(m.content)}</div></div>`;const d=m.data;return `<div class="msg"><div class="bubble">${esc(m.text||'')}${d?`<div class="aiWordCard"><div class="aiWordTop"><div><div class="aiWord">${esc(d.word||'')}</div><div class="pron">${esc(d.pronunciation||'')}</div></div><button class="ghost hover" onclick="speak(${JSON.stringify(d.word||'')})">🔊</button></div><div class="meaning">${esc(d.meaning||'')}</div><div class="example">${esc(d.example||'')}</div><div class="translation">${esc(d.translation||'')}</div><div class="aiActions"><button class="primary hover" onclick='saveAiWord(${JSON.stringify(d).replace(/'/g,"&#39;")})'>加入词库</button></div></div>`:''}</div></div>`}).join('');el.scrollTop=el.scrollHeight}
 function saveAiWord(d){upsertWord({word:d.word,pron:d.pronunciation||d.pron||'',meaning:d.meaning,example:d.example||'',translation:d.translation||''});toast('已加入牟之记忆法');speak(d.word)}
 async function askAI(){const input=document.getElementById('prompt'),q=input.value.trim();if(!q)return;state.chat=state.chat||[];state.chat.push({role:'user',content:q});input.value='';save();document.getElementById('aiStatus').textContent='思考中…';document.getElementById('sendBtn').disabled=true;try{const res=await fetch('/api/chat',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({message:q,history:state.chat.slice(-8),autoSave:document.getElementById('autoSave').checked})});if(!res.ok)throw new Error((await res.text())||'API 请求失败');const d=await res.json();state.chat.push({role:'assistant',text:d.reply||'',data:d.word||null});if(d.word&&document.getElementById('autoSave').checked)upsertWord({word:d.word.word,pron:d.word.pronunciation||'',meaning:d.word.meaning,example:d.word.example||'',translation:d.word.translation||''});else save();document.getElementById('aiStatus').textContent='在线';if(d.word)speak(d.word.word);if(d.word&&d.word.example)setTimeout(()=>speak(d.word.example),700)}catch(e){state.chat.push({role:'assistant',text:'AI 暂时无法连接。部署网站后，请确认服务器已配置 OPENAI_API_KEY；本地打开 index.html 时没有 /api/chat 后端。'});save();document.getElementById('aiStatus').textContent='未连接';toast('AI 接口未连接')}finally{document.getElementById('sendBtn').disabled=false;renderChat()}}
-function account(){openModal(`<h2>云端账号</h2><p class="note">当前版本保留 Supabase 接口位置。你部署后可在顶部脚本中填写 Supabase URL / anon key，再启用账号云同步。</p><div class="empty">现在无需账号也能本地复习、AI 对话、导入导出。</div>`)}
+let currentUser = null;
+
+async function initAuth() {
+  if (!window.supabase || !supabaseClient) {
+    console.warn("Supabase client not found");
+    return;
+  }
+
+  const { data } = await supabaseClient.auth.getUser();
+  currentUser = data?.user || null;
+
+  supabaseClient.auth.onAuthStateChange((event, session) => {
+    currentUser = session?.user || null;
+    render();
+  });
+}
+
+async function signUp() {
+  const email = document.getElementById("authEmail").value.trim();
+  const password = document.getElementById("authPassword").value;
+
+  if (!email || !password) {
+    toast("请输入邮箱和密码");
+    return;
+  }
+
+  if (password.length < 6) {
+    toast("密码至少 6 位");
+    return;
+  }
+
+  const { error } = await supabaseClient.auth.signUp({
+    email,
+    password
+  });
+
+  if (error) {
+    toast(error.message);
+    return;
+  }
+
+  toast("注册成功，请检查邮箱");
+}
+
+async function signIn() {
+  const email = document.getElementById("authEmail").value.trim();
+  const password = document.getElementById("authPassword").value;
+
+  if (!email || !password) {
+    toast("请输入邮箱和密码");
+    return;
+  }
+
+  const { data, error } =
+    await supabaseClient.auth.signInWithPassword({
+      email,
+      password
+    });
+
+  if (error) {
+    toast(error.message);
+    return;
+  }
+
+  currentUser = data.user;
+  closeModal();
+  toast("登录成功");
+  await loadCloudWords();
+}
+
+async function signOut() {
+  await supabaseClient.auth.signOut();
+  currentUser = null;
+  toast("已退出登录");
+}
+
+async function loadCloudWords() {
+  if (!currentUser) return;
+
+  const { data, error } = await supabaseClient
+    .from("words")
+    .select("*")
+    .order("created_at", { ascending: false });
+
+  if (error) {
+    console.error(error);
+    toast("读取云端词库失败");
+    return;
+  }
+
+  if (Array.isArray(data)) {
+    state.words = data.map(w => ({
+      id: w.id,
+      word: w.word,
+      pron: w.pronunciation || "",
+      meaning: w.meaning || "",
+      example: w.example || "",
+      translation: w.translation || "",
+      round: w.round || 0,
+      due: w.due_date || isoToday(),
+      created: w.created_at?.slice(0, 10) || isoToday(),
+      last: w.last_reviewed || null
+    }));
+
+    save();
+  }
+}
+
+async function cloudSaveWord(w) {
+  if (!currentUser) return;
+
+  const { error } = await supabaseClient
+    .from("words")
+    .upsert({
+      user_id: currentUser.id,
+      word: w.word.toLowerCase(),
+      pronunciation: w.pron || "",
+      meaning: w.meaning || "",
+      example: w.example || "",
+      translation: w.translation || "",
+      round: w.round || 0,
+      due_date: w.due || isoToday(),
+      last_reviewed: w.last || null,
+      updated_at: new Date().toISOString()
+    }, {
+      onConflict: "user_id,word"
+    });
+
+  if (error) {
+    console.error(error);
+    toast("云端保存失败");
+  }
+}
+
+function account() {
+  if (currentUser) {
+    openModal(`
+      <h2>云端账号</h2>
+      <p class="note">
+        已登录：${esc(currentUser.email || "")}
+      </p>
+
+      <div class="heroBtns">
+        <button class="ghost hover"
+          onclick="loadCloudWords();closeModal()">
+          同步我的词库
+        </button>
+
+        <button class="ghost hover"
+          onclick="signOut();closeModal()">
+          退出登录
+        </button>
+      </div>
+    `);
+    return;
+  }
+
+  openModal(`
+    <h2>登录「牟之记忆法」</h2>
+
+    <p class="note">
+      登录后，你的单词可以保存到云端，换设备也能继续学习。
+    </p>
+
+    <input
+      id="authEmail"
+      type="email"
+      placeholder="邮箱"
+      style="width:100%;margin:10px 0;padding:13px;border-radius:14px;border:1px solid var(--line)"
+    >
+
+    <input
+      id="authPassword"
+      type="password"
+      placeholder="密码（至少 6 位）"
+      style="width:100%;margin:10px 0;padding:13px;border-radius:14px;border:1px solid var(--line)"
+    >
+
+    <div class="heroBtns" style="margin-top:14px">
+      <button class="primary hover" onclick="signIn()">
+        登录
+      </button>
+
+      <button class="ghost hover" onclick="signUp()">
+        注册账号
+      </button>
+    </div>
+  `);
+}
 document.getElementById('reviewBtn').onclick=review;document.getElementById('quizBtn').onclick=quiz;document.getElementById('addBtn').onclick=add;document.getElementById('exportBtn').onclick=exportData;document.getElementById('importBtn').onclick=importData;document.getElementById('shareBtn').onclick=makeShare;document.getElementById('accountBtn').onclick=account;document.getElementById('closeBtn').onclick=closeModal;document.getElementById('modal').onclick=e=>{if(e.target.id==='modal')closeModal()};document.querySelectorAll('[data-theme]').forEach(b=>b.onclick=()=>{state.theme=b.dataset.theme;save()});document.getElementById('sendBtn').onclick=askAI;document.getElementById('prompt').addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();askAI()}});document.getElementById('clearChatBtn').onclick=()=>{state.chat=[];save();toast('AI 对话已清空')};
-readShare();render();
+readShare();render();initAuth();
 </script></body></html>
